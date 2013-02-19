@@ -13,15 +13,24 @@ sub-algorithms:
   finding algorithm for polynomials over Z_p
 - Line sieve using approximations of base 2 logarithms
 - Solve matrix step using Gauss-Jordan
-- Algebraic square root is currently not implemented
+- Algebraic square root is under progress (attempting to use the method of
+  Couveignes)
+
+Read more about the number field sieve elsewhere (for example
+http://en.wikipedia.org/wiki/General_number_field_sieve ). Be warned, the
+algorithm is extremely complicated and math-heavy.
 
 It is made to be dependent of as few external libraries as possible.
 Currently, the only requirement is the GMP (GNU Multiprecision) library.
+The programming language is C, and the only C99 feature used is long long.
+It means that gcc will happily compile the code as C89.
 
 Things needed for a working program:
 - Polynomial factorization of f(x) that works in all cases (currently only
   works if constant term is less than 2*10^9 and finds linear factors only)
 - Algebraic square root
+- Last gcd step, including picking another linear combination if gcd results
+  in a trivial factor
 
 Limitations:
 - Currently limited to degree 3 polynomials, because the factorization of
@@ -31,6 +40,10 @@ Limitations:
 
 Areas of improvement:
 - Profile the program and optimize the hot spots
+- Factorize the constant term of f(x) and use this factorization to generate
+  all divisors. In this way make a faster check for linear factors that should
+  work for larger numbers (this improvement is made superfluous by proper
+  polynomial factorization)
 - Use large primes in the sieve to obtain higher yield
 - Use proper polynomial factorization of f(x), either with the extremely
   complicated Algorithm 3.5.7 in [Coh93], the even more complicated
@@ -40,8 +53,9 @@ Areas of improvement:
 - Use a faster linear algebra algorithm than Gauss-Jordan (for instance
   Block Lanczos or Block Wiedemann)
 - Use lattice sieve instead of line sieve
-- Use a different algebraic square root algorithm that handles even degree
+- Use a different algebraic square root algorithm that handles even degrees
 - Better selection of f(x)
+- Postprocessing of relations before linear algebra step
 
 Usage:
 

@@ -1,0 +1,167 @@
+timings for portions of my program
+
+portions:
+
+factor f(x):			factor f(x) in Z (not made)
+construct factorbase:		find primes in factorbase using an efficient
+				algorithm
+construct factorbase (slow):	find primes in factorbase using a slow and
+				naive algorithm
+sieve:				(not made)
+linear algebra:			find square exponent vector
+square root:			take square root of above (not made)
+
+RSA-150:
+
+construct factorbase:		17239.495 s
+
+RSA-140:
+
+construct factorbase:		8716.014 s
+
+RSA-130:
+
+construct factorbase:		4439.149 s
+
+RSA-120:
+
+construct factorbase:		2152.258 s
+
+RSA-110:
+
+construct factorbase:		1019.447 s
+
+RSA-100:
+
+construct factorbase:		439.968 s
+
+c90:
+
+construct factorbase:		197.677 s
+
+c80:
+
+construct factorbase:		77.610 s
+
+c70:
+
+construct factorbase:		29.227 s
+
+c60:
+
+construct factorbase:		9.436 s
+
+c50:
+
+construct factorbase:		3.079 s
+construct factorbase (slow):	 s
+entire algorithm (per 2013-02-12) minus algroot: 21205.988 s
+  matrix 85084*85085, deg=3, sievew=6000000, thr=35, skip=40, maxb=1825
+
+c40:
+
+construct factorbase:		0.896 s
+construct factorbase (slow):	215.418 s
+
+c39:
+
+construct factorbase:		0.789 s
+construct factorbase (slow):	152.942 s
+
+c38:
+
+construct factorbase:		0.674 s
+construct factorbase (slow):	119.055 s
+
+c37:
+
+construct factorbase:		0.630 s
+construct factorbase (slow):	101.999 s
+
+c36:
+
+construct factorbase:		0.533 s
+construct factorbase (slow):	65.964 s
+
+c35:
+
+construct factorbase:		0.505 s
+construct factorbase (slow):	57.291 s
+
+c34:
+
+construct factorbase:		0.403 s
+construct factorbase (slow):	34.555 s
+
+c33:
+
+construct factorbase:		0.392 s
+construct factorbase (slow):	29.847 s
+
+c32:
+
+construct factorbase:		0.347 s
+construct factorbase (slow):	23.044 s
+
+c30:
+
+construct factorbase:		0.264 s
+construct factorbase (slow):	10.215 s
+
+CORRECTNESS
+
+compare results from fast and naive methods of findingalgebraic prime ideals:
+RSA-100: OK (up to around p<=1655141)
+c50: OK
+c40: OK
+c39: OK
+c38: OK
+c37: OK
+c36: OK
+c35: OK
+c34: OK
+c33: OK
+c32: OK
+c30: OK
+
+compared factor base and quadratic characters to example from the paper
+"a beginner's guide to the general number field sieve": OK
+
+FACTOR BASE SIZES (comparison with my old qs implementation)
+
+n	qs	nfs	nfs-rat	nfs-alg	nfs-qu		ratio
+
+45113	14
+84101	17
+c30	298	6218	2962	2965	291		20.866
+c32	456
+c33	562
+c34	553
+c35	732
+c36	773
+c37	968
+c38	1024
+c39	1150
+c40	1382	25335	12559	12382	394		18.332
+c50	5209	85848	42516	42839	493		16.481
+c60	17651	247140	123389	123161	590		14.001
+c70	59912	702795	350951	351150	694		11.730
+c80	178669	1756674	877764	878117	793		9.832
+c90	526397	4246021	2121565	2123561	895		8.066
+RSA-100	1341905	9005036	4502098	4501950	988		6.711
+RSA-110	3662140	19888688 9943607 9943990 1091		5.431
+RSA-120	9140942	40481800 20240362 20240249 1189		4.429
+RSA-130	22332751 80301524 40153039 40147197 1288	3.596
+RSA-140	-	156453389 78221202 78230799 1388
+RSA-150		292820223 146405034 146413703 1486
+
+(from RSA-140, my qs program complains that B is more than 1e9)
+
+factor base upper bound:
+
+	   sqrt(log n * log log n))
+qs:	B=e
+
+	          1/3          1/3              2/3
+             (8/9)    * (log n)    * (log log n)
+nfs:	B=2*e

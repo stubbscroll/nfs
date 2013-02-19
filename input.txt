@@ -83,4 +83,4 @@
 0
 
 ; number of extra relations wanted for linear algebra
-0
+3
