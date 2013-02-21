@@ -849,8 +849,7 @@ void getratroot(mpz_t n,int *ev,mpz_t *f,int df,mpz_t m,mpz_t root) {
 	gmp_printf("rational root before mul: %Zd\n",root);
 	evalpoly(fd,dfd,m,t);
 	mpz_mod(t,t,n); /* t = f'(m) */
-	mpz_mul(root,root,t); /* multiply in f'(m)^2 */
-	mpz_mul(root,root,t);
+	mpz_mul(root,root,t); /* multiply in f'(m) */
 	mpz_mod(root,root,n); /* and reduce mod n */
 	gmp_printf("rational root after mul: %Zd\n",root);
 	for(i=0;i<=dfd;i++) mpz_clear(fd[i]);
@@ -1008,17 +1007,20 @@ void printalgnum(mpz_t n,uchar *v,int cols,mpz_t *f,int df,mpz_t m,int *aval,int
 	polyreducempz(a,da,f,df,a,&da);
 	printf("algebraic number after mul:\n");
 	printmpzpoly(a,da);
-	polyreducempz(a,da,f,df,a,&da);
-	printf("algebraic number after modulo f(x):\n");
-	printmpzpoly(a,da);
 	for(i=0;i<BIGDEG+1;i++) mpz_clear(b[i]);
 	for(i=0;i<2*BIGDEG+2;i++) mpz_clear(a[i]);
 }
 
 /* get algebraic square root! v is the subset of (a,b) pairs */
+/* use couveignes' algorithm */
 void getalgroot(mpz_t n,uchar *v,int cols,mpz_t *f,int df,mpz_t m,mpz_t root,int *aval,int *bval) {
-	double alpha,logest=0,b;
-	int i,s,maxu;
+	double logest=0,b;
+	mpz_t P,M,temp;
+	ull *q,pp,*Mi,*ai;
+	int i,s,maxu,qn;
+	mpz_init(P);
+	mpz_init_set_si(M,1);
+	mpz_init(temp);
 	/* rough estimate:
 	   d^(d+5)/2 * n * (2*u*sqrt(d)*m)^(s/2)
 	   calculate log2 of this since it's huge */
@@ -1032,20 +1034,46 @@ void getalgroot(mpz_t n,uchar *v,int cols,mpz_t *f,int df,mpz_t m,mpz_t root,int
 		if(maxu<bval[i]) maxu=bval[i];
 	}
 	for(s=i=0;i<cols;i++) s+=v[i];
-	printf("algebraic square is the product of %d numbers\n",s);
 	b=2*maxu*sqrt(df)*mpz_get_d(m);
 	logest+=s*.5*log2(b);
 	printf("estimate: %f digits\n",logest);
+	/* find multiple q such that their product has >= logest digits */
+	qn=(int)(1+logest/log2(9e18));
+	q=malloc(qn*sizeof(ull));
+	if(!q) error("out of memory in algroot");
+	Mi=malloc(qn*sizeof(ull));
+	if(!Mi) error("out of memory in algroot");
+	ai=malloc(qn*sizeof(ull));
+	if(!ai) error("out of memory in algroot");
+	for(pp=(1ULL<<63)-1,i=0;i<qn;) {
+		mpz_set_ull(P,pp);
+		if(!mpz_probab_prime_p(P,30)) continue;
+		if(!polyirredmod(f,df,pp)) continue;
+		/* TODO disallow some pp if it makes square root computation
+		   harder */
+		q[i++]=pp;
+		mpz_mul(M,M,P);
+	}
+	/* for each i, compute rem(M_i,q_i) and a_i */
+	for(i=0;i<qn;i++) {
+		mpz_set_ull(P,q[i]);
+		mpz_fdiv_q(temp,M,P);
+		Mi[i]=mpz_mod_ull(temp,q[i]);
+		ai[i]=inverse(Mi[i],q[i]);
+	}
+	/* for each q_i, calculate f'^2 * prod(a-bx) mod f, mod q_i
+	   and calculate its square root in Z_p/<f> */
+	for(i=0;i<qn;i++) {
+		
+	}
 	
 	
 	
 	
-	/* find approximate complex roots of f (double precision, for
-	   instance). estimate largest coefficients of B(x) */
-	
-	/* choose a bunch of primes q (just below 2^63 is good, i guess).
-	   their product is larger than the largest coefficient of B(x). */
-	/* TODO */
+	free(q);
+	mpz_clear(temp);
+	mpz_clear(M);
+	mpz_clear(P);
 }
 
 /* use trial division to check that a-bm (rational) and a-b*alpha (algebraic)
