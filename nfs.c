@@ -36,6 +36,7 @@ ull opt_sievew; /* width of line sieve */
 int opt_thr;    /* threshold for accepting a number in the sieve */
 int opt_skip;   /* skip this amount of smallest primes in the sieve */
 int opt_extra;  /* number of extra relations wanted for linear algebra */
+int opt_signb;  /* -1: a-bm, 1: a+bm */
 
 void getnextline(char *s) {
 	int l;
@@ -114,6 +115,8 @@ void readoptions() {
 	getnextline(s); sscanf(s,"%d",&opt_skip);
 	getnextline(s); sscanf(s,"%d",&opt_extra);
 	if(opt_deg>MAXDEG) error("too high degree");
+	getnextline(s); sscanf(s,"%d",&opt_signb);
+	if(opt_signb!=1 && opt_signb!=-1) error("wrong sign");
 }
 
 /* all polynomials have the following format:
@@ -495,9 +498,9 @@ void polymulmodmod(ull *a,int da,ull *b,int db,ull *v,int dv,ull *c,int *dc,ull 
 /* return a(x)^n mod v(x) over Z_p, put result in c */
 /* warning, not very efficient, really, but care about that later */
 void polypowmodmod(ull *a,int da,ull n,ull *v,int dv,ull *c,int *dc,ull p) {
-	static ull z[MAXDEG+1],y[MAXDEG+1]={1};
-	int dz=da,dy=0,i;
-	for(i=0;i<=dz;i++) z[i]=a[i];
+	ull z[MAXDEG+1],y[MAXDEG+1]={1};
+	int dz,dy=0,i;
+	polyset(a,da,z,&dz);
 	while(n) {
 		if(n&1) {
 			n>>=1;
@@ -509,9 +512,31 @@ void polypowmodmod(ull *a,int da,ull n,ull *v,int dv,ull *c,int *dc,ull p) {
 	for(*dc=dy,i=0;i<=*dc;i++) c[i]=y[i];
 }
 
+/* return a(x)^n mod v(x) over Z_p, put result in c, exponent is mpz */
+/* warning, not very efficient, really, but care about that later */
+void polypowmodmodmpz(ull *a,int da,mpz_t N,ull *v,int dv,ull *c,int *dc,ull p) {
+	ull z[MAXDEG+1],y[MAXDEG+1]={1};
+	int dz=da,dy=0,i;
+	mpz_t t,n;
+	mpz_init(t);
+	mpz_init_set(n,N);
+	for(i=0;i<=dz;i++) z[i]=a[i];
+	while(mpz_cmp_si(n,0)>0) {
+		if(mpz_mod_ui(t,n,2)) {
+			mpz_fdiv_q_2exp(n,n,1);
+			polymulmodmod(y,dy,z,dz,v,dv,y,&dy,p);
+			if(!mpz_cmp_si(n,0)) break;
+		} else mpz_fdiv_q_2exp(n,n,1);
+		polymulmodmod(z,dz,z,dz,v,dv,z,&dz,p);
+	}
+	for(*dc=dy,i=0;i<=*dc;i++) c[i]=y[i];
+	mpz_clear(n);
+	mpz_clear(t);
+}
+
 /* return a(x)^n over Z_p */
 void polypowmod(ull *a,int da,ull n,ull *c,int *dc,ull p) {
-	static ull z[MAXDEG+1],y[MAXDEG+1]={1};
+	ull z[MAXDEG+1],y[MAXDEG+1]={1};
 	int dz=da,dy=0,i;
 	for(i=0;i<=dz;i++) z[i]=a[i];
 	while(n) {
@@ -725,9 +750,9 @@ void createfactorbases(ull B1,ull B2,ull Bk,mpz_t *f,int deg,ull **_p1,ull **_r1
 	}
 
 	// TEMP output factor bases
-//	for(i=0;i<*bn1;i++) printf("(%I64d %I64d)\n",p1[i],r1[i]);printf("\n");
-//	for(i=0;i<*bn2;i++) printf("%I64d ",p2[i]);printf("\n");
-//	for(i=0;i<*bn3;i++) printf("(%I64d %I64d)\n",p3[i],r3[i]);printf("\n");
+	for(i=0;i<*bn1;i++) printf("(%I64d %I64d)\n",p1[i],r1[i]);printf("\n");
+	for(i=0;i<*bn2;i++) printf("%I64d ",p2[i]);printf("\n");
+	for(i=0;i<*bn3;i++) printf("(%I64d %I64d)\n",p3[i],r3[i]);printf("\n");
 	free(sieve);
 	*_p1=p1; *_r1=r1; *_p2=p2; *_p3=p3; *_r3=r3;
 }
@@ -784,7 +809,7 @@ int bitgauss32(uint **a,int n,int m,int o) {
 /* find all free variables: variable i is free if there is no row having its first
    1-element in column i */
 int findfreevars(uint **a,int rows,int cols,uchar *freevar) {
-	int i,j,w=(cols+31)/32,r=cols;
+	int i,j,r=cols;
 	memset(freevar,1,cols);
 	for(i=0;i<rows;i++) {
 		for(j=0;j<cols;j++) if(ISSET(a,i,j)) {
@@ -835,6 +860,7 @@ void getratroot(mpz_t n,int *ev,mpz_t *f,int df,mpz_t m,mpz_t root) {
 	int i,j;
 	for(i=0;i<bn2;i++) if(ev[i+1+bn1]) {
 		mpz_set_ull(t,p2[i]);
+		printf("take %I64d^%d\n",p2[i],ev[1+bn1+i]/2);
 		for(j=0;j+j<ev[i+1+bn1];j++) {
 			mpz_mul(root,root,t);
 			mpz_mod(root,root,n);
@@ -865,7 +891,6 @@ int polyirredmod(mpz_t *in,int df,ull p) {
 	static ull g[MAXDEG+1],h[MAXDEG+1],f[MAXDEG+1];
 	int dg,i,j,dh;
 	for(i=0;i<=df;i++) f[i]=mpz_mod_ull(in[i],p);
-	printullpoly(f,df);printf("\n");
 	for(i=1;i+i<=df;i++) {
 		/* form x^p^i - x */
 		/* use that x^p^i = ((x^p)^p) ... ^p (i times) */
@@ -879,58 +904,31 @@ int polyirredmod(mpz_t *in,int df,ull p) {
 	return 1;
 }
 
-/* evaluate f(x) in doubles */
-/* currently not used */
-double evaldoublepoly(double *f,int df,double x) {
-	double r=f[df];
-	int i;
-	for(i=df-1;i>=0;i--) r=r*x+f[i];
-	return r;
+/* calculate the legendre symbol of the element a (in polynomial format)
+   in the field F_p^df:
+   1 if element is a quadratic residue, -1 if not.
+	 p must be an odd prime! */
+int polylegendre(ull *a,int da,ull *f,int df,ull p) {
+	ull b[MAXDEG+1];
+	mpz_t n,P;
+	int db,i;
+	for(i=0;i<=da;i++) if(a[i]) goto notzero;
+	return 0;
+notzero:
+	mpz_init(n);
+	mpz_init(P);
+	mpz_set_ull(P,p);
+	mpz_pow_ui(n,P,df);
+	mpz_sub_ui(n,n,1);
+	mpz_divexact_ui(n,n,2);
+	polypowmodmodmpz(a,da,n,f,df,b,&db,p);
+	mpz_clear(n);
+	mpz_clear(P);
+	if(b[0]==p-1) return -1;
+	if(b[0]==1) return 1;
+	error("error in polylegendre, res not 1 or -1");
+	return 0;
 }
-
-/* given a polynomial of _odd_ degree, find a real root
-   using binary search */
-/* warning, the roots must not be close to the limits of the double
-   datetype. */
-/* assume that leading coefficient is positive */
-/* currently not used */
-double findrealpolyroot(mpz_t *in,int df) {
-	static double f[MAXDEG+1];
-	double lo=-1,hi=1,mid;
-	int i;
-	for(i=0;i<=df;i++) f[i]=mpz_get_d(in[i]);
-	while(evaldoublepoly(f,df,lo)>0) lo*=2;
-	while(evaldoublepoly(f,df,hi)<0) hi*=2;
-	for(i=0;i<150;i++) {
-		mid=(lo+hi)*.5;
-		if(evaldoublepoly(f,df,mid)<0) lo=mid;
-		else hi=mid;
-	}
-	return lo;
-}
-
-/* evaluate polynomial with complex coefficients (fr,fi), degree df
-   at (xr,xc), return result in (rr,rc) */
-/* currently not used */
-void polycomplexeval(double *fr,double *fi,double df,double xr,double xc,double *rr,double *rc) {
-	/* TODO not finished */
-}
-
-/* find all complex roots of f(x). return the roots in
-   rr (real part) and rc (imaginary part) */
-/* use algorithn 3.6.6 in cohen or something like that */
-/* f(x) must be squarefree, don't know if that is over Q or C */
-/* currently not used */
-void findcomplexpolyroots(mpz_t *in,int df,double *rr,double *ri) {
-	static double p[MAXDEG+1],pd[MAXDEG+1],q[MAXDEG+1],qd[MAXDEG+1];
-	int dp=df,dpd=df-1,dq=df,dqd=df-1,i;
-	double xr=1.3,xi=0.314159,vr,vi;
-	for(i=0;i<=df;i++) q[i]=p[i]=mpz_get_d(in[i]);
-	for(i=0;i<df;i++) qd[i]=pd[i]=q[i+1]*(i+1);
-	/* TODO not finished */
-}
-
-/* TODO legendre symbol of an element in F_p[x]/<f(x)> */
 
 /* given a, find b such that b^2=a, in the field Z_p/<f(x)> */
 void polysqrtmod(ull *a,int da,ull *f,int df,ull *b,int *db,ull p) {
@@ -987,7 +985,7 @@ void printalgnum(mpz_t n,uchar *v,int cols,mpz_t *f,int df,mpz_t m,int *aval,int
 	for(i=0;i<BIGDEG+1;i++) mpz_init(b[i]);
 	da=0;
 	for(i=0;i<cols;i++) if(v[i]) {
-		printf("mul in %d-%d*alpha\n",aval[i],bval[i]);
+		printf("mul in %d%s%d*alpha\n",aval[i],bval[i]<0?"+":"",-bval[i]);
 		mpz_set_si(b[0],aval[i]);
 		mpz_set_si(b[1],-bval[i]);
 		db=1;
@@ -995,17 +993,12 @@ void printalgnum(mpz_t n,uchar *v,int cols,mpz_t *f,int df,mpz_t m,int *aval,int
 		polyreducempz(a,da,f,df,a,&da);
 	}
 	/* multiply with f'(alpha)^2 */
-	printf("algebraic number before mul with f'^2:\n");
-	printmpzpoly(a,da);
 	polyderivempz(f,df,b,&db);
-	printf("derivert\n");
-	printmpzpoly(f,df);	
-	printmpzpoly(b,db);	
 	polymulmpz(a,da,b,db,a,&da);
 	polyreducempz(a,da,f,df,a,&da);
 	polymulmpz(a,da,b,db,a,&da);
 	polyreducempz(a,da,f,df,a,&da);
-	printf("algebraic number after mul:\n");
+	printf("algebraic square:\n");
 	printmpzpoly(a,da);
 	for(i=0;i<BIGDEG+1;i++) mpz_clear(b[i]);
 	for(i=0;i<2*BIGDEG+2;i++) mpz_clear(a[i]);
@@ -1013,11 +1006,11 @@ void printalgnum(mpz_t n,uchar *v,int cols,mpz_t *f,int df,mpz_t m,int *aval,int
 
 /* get algebraic square root! v is the subset of (a,b) pairs */
 /* use couveignes' algorithm */
-void getalgroot(mpz_t n,uchar *v,int cols,mpz_t *f,int df,mpz_t m,mpz_t root,int *aval,int *bval) {
+void getalgroot(mpz_t n,uchar *v,int cols,mpz_t *in,int df,mpz_t m,mpz_t root,int *aval,int *bval) {
 	double logest=0,b;
 	mpz_t P,M,temp;
-	ull *q,pp,*Mi,*ai;
-	int i,s,maxu,qn;
+	ull *q,pp,*Mi,*ai,f[MAXDEG+1],fd[MAXDEG+1],g[MAXDEG+1],h[MAXDEG+1];
+	int i,s,maxu,qn,dfd,j,dg,dh;
 	mpz_init(P);
 	mpz_init_set_si(M,1);
 	mpz_init(temp);
@@ -1031,24 +1024,26 @@ void getalgroot(mpz_t n,uchar *v,int cols,mpz_t *f,int df,mpz_t m,mpz_t root,int
 	for(i=0;i<cols;i++) {
 		if(maxu<-aval[i]) maxu=-aval[i];
 		if(maxu<aval[i]) maxu=aval[i];
-		if(maxu<bval[i]) maxu=bval[i];
+		if(maxu<-bval[i]) maxu=-bval[i];
+		if(maxu>bval[i]) maxu=bval[i];
 	}
 	for(s=i=0;i<cols;i++) s+=v[i];
 	b=2*maxu*sqrt(df)*mpz_get_d(m);
 	logest+=s*.5*log2(b);
-	printf("estimate: %f digits\n",logest);
+	printf("estimate: %f bits\n",logest);
 	/* find multiple q such that their product has >= logest digits */
 	qn=(int)(1+logest/log2(9e18));
+	qn=20;
 	q=malloc(qn*sizeof(ull));
 	if(!q) error("out of memory in algroot");
 	Mi=malloc(qn*sizeof(ull));
 	if(!Mi) error("out of memory in algroot");
 	ai=malloc(qn*sizeof(ull));
 	if(!ai) error("out of memory in algroot");
-	for(pp=(1ULL<<63)-1,i=0;i<qn;) {
+	for(pp=(1ULL<<63)-1,i=0;i<qn;pp-=2) {
 		mpz_set_ull(P,pp);
 		if(!mpz_probab_prime_p(P,30)) continue;
-		if(!polyirredmod(f,df,pp)) continue;
+		if(!polyirredmod(in,df,pp)) continue;
 		/* TODO disallow some pp if it makes square root computation
 		   harder */
 		q[i++]=pp;
@@ -1063,10 +1058,21 @@ void getalgroot(mpz_t n,uchar *v,int cols,mpz_t *f,int df,mpz_t m,mpz_t root,int
 	}
 	/* for each q_i, calculate f'^2 * prod(a-bx) mod f, mod q_i
 	   and calculate its square root in Z_p/<f> */
+	dfd=df-1;
 	for(i=0;i<qn;i++) {
-		
+		for(j=0;j<=df;j++) f[j]=mpz_mod_ull(in[j],q[i]);
+		polyderivemod(f,df,fd,&dfd,q[i]);
+		/* form f'^2 * prod_{(a,b)} (a-b*alpha) mod q[i] */
+		polymulmodmod(fd,dfd,fd,dfd,f,df,g,&dg,q[i]);
+		for(j=0;j<cols;j++) if(v[j]) {
+			h[0]=aval[j];
+			h[1]=((-bval[j])%q[i]+q[i])%q[i];
+			dh=1;
+			polymulmodmod(g,dg,h,dh,f,df,g,&dg,q[i]);
+		}
+		/* square root */
+		printf("q mod 8: %I64d, legendre %d\n",q[i]&7,polylegendre(g,dg,f,df,q[i]));
 	}
-	
 	
 	
 	
@@ -1283,10 +1289,10 @@ int linesieve(int a1,int a2,int b,mpz_t n,mpz_t *f,int fn,mpz_t m,int extra,int 
 		static ull f1[1000],f2[1000],f3[1000];
 		int fn1=0,fn2=0,fn3=0,f0;
 		a=a1+i;
-		if(a<0) a=-a;
-		if(gcd(a,b)>1) continue;
+		if(gcd(a>0?a:-a,b>0?b:-b)>1) continue;
 		if(sieve[i]<=opt_thr) {
 			mpz_add_ui(t,A,i);
+//			printf("check %d %d\n",a1+i,b);
 			if(trialsmooth(t,B,f,fn,m,&f0,f1,&fn1,f2,&fn2,f3,&fn3)) {
 				/* insert in transposed matrix:
 				   column i is the ith relation we find
@@ -1369,7 +1375,7 @@ void testsieve(mpz_t n,mpz_t *f,int fn,mpz_t m,int extra,int *aval,int *bval) {
 	/* factor lists */
 	puts("start sieve");
 	notsmooth=missed=smooth=0;
-	for(B=1;;B++) if(linesieve(-opt_sievew,opt_sievew,B,n,f,fn,m,extra,aval,bval)) break;
+	for(B=1;;B++) if(linesieve(-opt_sievew,opt_sievew,-1*opt_signb*B,n,f,fn,m,extra,aval,bval)) break;
 	printf("smooth numbers found: %d\n",smooth);
 	printf("nonsmooth numbers trial-divided: %d\n",notsmooth);
 	printf("smooth numbers missed: %d\n",missed);
@@ -1405,6 +1411,7 @@ int donfs(mpz_t n) {
 	if(mpz_perfect_power_p(n)) { retval=-2; goto end; }
 	/* we want to be really, REALLY sure that n is composite */
 	if(mpz_probab_prime_p(n,100)) { retval=-3; goto end; }
+	mpz_set(m,opt_m);
 	if(!mpz_cmp_si(m,0)) mpz_root(m,n,deg); /* deg-th root of n, get our base m */
 	gmp_printf("m = %Zd\n",m);
 	err=getpolynomial(n,m,deg,f);
@@ -1479,9 +1486,9 @@ int donfs(mpz_t n) {
 	puts("start gauss");
 	/* store old matrix. change to a sparse format later */
 	for(i=0;i<rows;i++) memcpy(Mold[i],M[i],((rows+31+extra)>>5)*sizeof(uint));
-//	printf("before solve\n");for(i=0;i<rows;i++) { for(j=0;j<rows+extra;j++) printf("%d",ISSET(M,i,j)?1:0); printf("\n");}
+	printf("before solve\n");for(i=0;i<rows;i++) { for(j=0;j<rows+extra;j++) printf("%d",ISSET(M,i,j)?1:0); printf("\n");}
 	bitgauss32(M,rows,rows+extra,0);
-//	printf("after solve\n");for(i=0;i<rows;i++) { for(j=0;j<rows+extra;j++) printf("%d",ISSET(M,i,j)?1:0); printf("\n");}
+	printf("after solve\n");for(i=0;i<rows;i++) { for(j=0;j<rows+extra;j++) printf("%d",ISSET(M,i,j)?1:0); printf("\n");}
 	ev=calloc((1+bn1+bn2+bn3),sizeof(int));
 	if(!ev) error("out of memory while allocating exponent vector");
 	v=malloc(rows+extra);

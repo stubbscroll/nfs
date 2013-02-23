@@ -84,3 +84,6 @@
 
 ; number of extra relations wanted for linear algebra
 3
+
+; sign of b
+-1

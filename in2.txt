@@ -1,0 +1,12 @@
+; example from matthew briggs & michael case
+45113
+90
+30
+6
+3
+31
+300
+30
+0
+3
+1
