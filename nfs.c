@@ -342,7 +342,9 @@ ull ullpowmod(ull n,ull k,ull mod) {
 /* 1: a is quadratic residue mod p, -1: a is not, 0: a mod p=0 */
 /* WARNING, p must be an odd prime */
 int legendre(ll a,ll p) {
-	int z=ullpowmod(a%p,(p-1)>>1,p);
+	a%=p;
+	if(a<0) a+=p;
+	int z=ullpowmod(a,(p-1)>>1,p);
 	return z==p-1?-1:z;
 }
 
@@ -737,9 +739,7 @@ void createfactorbases(ull B1,ull B2,ull Bk,mpz_t *f,int deg,ull **_p1,ull **_r1
 		findideals2(b,db,q,root,&fn);
 		if(!fn) continue;
 		/* find value from root such that f'(value)!=0 mod q */
-		db--;
-		for(k=0;k<=db;k++) b[k]=ullmulmod2(b[k+1],k+1,q);
-		while(db>-1 && !b[db]) db--;
+		polyderivemod(b,db,b,&db,q);
 		for(k=0;k<fn;k++) if(evalpolymod(b,db,root[k],q)) {
 			p3[i]=q;
 			r3[i]=root[k];
@@ -847,7 +847,9 @@ void getsquare(uint **a,uint **old,int *ev,int rows,int cols,uchar *freevar,int 
 		/* pick relation i */
 		for(j=0;j<rows;j++) ev[j]+=ISSET(old,j,i)?1:0;
 	}
-	for(j=0;j<rows;j++) printf("%d ",ev[j]);printf("\n");
+//	for(j=0;j<rows;j++) printf("%d ",ev[j]);printf("\n");
+	/* sanity check: all elements in exponent vector should be even */
+	for(j=0;j<rows;j++) if(ev[j]&1) error("odd element in vector!");
 }
 
 /* get rational square root! ev is the exponent vector */
@@ -860,7 +862,6 @@ void getratroot(mpz_t n,int *ev,mpz_t *f,int df,mpz_t m,mpz_t root) {
 	int i,j;
 	for(i=0;i<bn2;i++) if(ev[i+1+bn1]) {
 		mpz_set_ull(t,p2[i]);
-		printf("take %I64d^%d\n",p2[i],ev[1+bn1+i]/2);
 		for(j=0;j+j<ev[i+1+bn1];j++) {
 			mpz_mul(root,root,t);
 			mpz_mod(root,root,n);
@@ -872,12 +873,11 @@ void getratroot(mpz_t n,int *ev,mpz_t *f,int df,mpz_t m,mpz_t root) {
 		mpz_init_set(fd[i],f[i+1]);
 		mpz_mul_ui(fd[i],fd[i],i+1);
 	}
-	gmp_printf("rational root before mul: %Zd\n",root);
 	evalpoly(fd,dfd,m,t);
 	mpz_mod(t,t,n); /* t = f'(m) */
 	mpz_mul(root,root,t); /* multiply in f'(m) */
 	mpz_mod(root,root,n); /* and reduce mod n */
-	gmp_printf("rational root after mul: %Zd\n",root);
+	gmp_printf("rational root: %Zd\n",root);
 	for(i=0;i<=dfd;i++) mpz_clear(fd[i]);
 	mpz_clear(t);
 }
@@ -984,20 +984,21 @@ void printalgnum(mpz_t n,uchar *v,int cols,mpz_t *f,int df,mpz_t m,int *aval,int
 	for(i=0;i<2*BIGDEG+2;i++) mpz_init_set_ui(a[i],i==0);
 	for(i=0;i<BIGDEG+1;i++) mpz_init(b[i]);
 	da=0;
-	for(i=0;i<cols;i++) if(v[i]) {
-		printf("mul in %d%s%d*alpha\n",aval[i],bval[i]<0?"+":"",-bval[i]);
-		mpz_set_si(b[0],aval[i]);
-		mpz_set_si(b[1],-bval[i]);
-		db=1;
-		polymulmpz(a,da,b,db,a,&da);
-		polyreducempz(a,da,f,df,a,&da);
-	}
 	/* multiply with f'(alpha)^2 */
 	polyderivempz(f,df,b,&db);
 	polymulmpz(a,da,b,db,a,&da);
 	polyreducempz(a,da,f,df,a,&da);
 	polymulmpz(a,da,b,db,a,&da);
 	polyreducempz(a,da,f,df,a,&da);
+	printf("f'(x)^2: ");printmpzpoly(a,da);
+	for(i=0;i<cols;i++) if(v[i]) {
+//		printf("mul in %d%s%d*alpha\n",aval[i],bval[i]<0?"+":"",-bval[i]);
+		mpz_set_si(b[0],aval[i]);
+		mpz_set_si(b[1],-bval[i]);
+		db=1;
+		polymulmpz(a,da,b,db,a,&da);
+		polyreducempz(a,da,f,df,a,&da);
+	}
 	printf("algebraic square:\n");
 	printmpzpoly(a,da);
 	for(i=0;i<BIGDEG+1;i++) mpz_clear(b[i]);
@@ -1025,7 +1026,7 @@ void getalgroot(mpz_t n,uchar *v,int cols,mpz_t *in,int df,mpz_t m,mpz_t root,in
 		if(maxu<-aval[i]) maxu=-aval[i];
 		if(maxu<aval[i]) maxu=aval[i];
 		if(maxu<-bval[i]) maxu=-bval[i];
-		if(maxu>bval[i]) maxu=bval[i];
+		if(maxu<bval[i]) maxu=bval[i];
 	}
 	for(s=i=0;i<cols;i++) s+=v[i];
 	b=2*maxu*sqrt(df)*mpz_get_d(m);
@@ -1033,7 +1034,6 @@ void getalgroot(mpz_t n,uchar *v,int cols,mpz_t *in,int df,mpz_t m,mpz_t root,in
 	printf("estimate: %f bits\n",logest);
 	/* find multiple q such that their product has >= logest digits */
 	qn=(int)(1+logest/log2(9e18));
-	qn=20;
 	q=malloc(qn*sizeof(ull));
 	if(!q) error("out of memory in algroot");
 	Mi=malloc(qn*sizeof(ull));
@@ -1289,6 +1289,7 @@ int linesieve(int a1,int a2,int b,mpz_t n,mpz_t *f,int fn,mpz_t m,int extra,int 
 		static ull f1[1000],f2[1000],f3[1000];
 		int fn1=0,fn2=0,fn3=0,f0;
 		a=a1+i;
+		if(a==0) continue;
 		if(gcd(a>0?a:-a,b>0?b:-b)>1) continue;
 		if(sieve[i]<=opt_thr) {
 			mpz_add_ui(t,A,i);
@@ -1300,7 +1301,7 @@ int linesieve(int a1,int a2,int b,mpz_t n,mpz_t *f,int fn,mpz_t m,int extra,int 
 				if(f0) MSETBIT(M,0,smooth);
 				for(j=0;j<fn1;j++) MSETBIT(M,1+f1[j],smooth);
 				for(j=0;j<fn2;j++) MSETBIT(M,1+bn1+f2[j],smooth);
-				for(j=0;j<fn3;j++) if(f3[j]) MSETBIT(M,1+bn1+bn2+j,smooth);
+				for(j=0;j<fn3;j++) MSETBIT(M,1+bn1+bn2+f3[j],smooth);
 				/* store the actual a,b pair */
 				aval[smooth]=a1+i;
 				bval[smooth]=b;
@@ -1499,15 +1500,14 @@ int donfs(mpz_t n) {
 	printf("gauss done, %d free variables found\n",zero);
 	for(k=0;k<zero;k++) {
 		getsquare(M,Mold,ev,rows,rows+extra,freevar,k,v);
-		printf("takevector:\n");
-		for(i=0;i<rows+extra;i++) printf("%d",v[i]);printf("\n");
+//		printf("takevector:\n");for(i=0;i<rows+extra;i++) printf("%d",v[i]);printf("\n");
 		getratroot(n,ev,f,deg,m,ratrot);
 		/* TODO algebraic square root */
 		/* TODO take gcd(n,ratrot,algrot) */
 		/* TODO pick another linear combination if gcd is trivial */
 		printalgnum(n,v,rows+extra,f,deg,m,aval,bval);
 		getalgroot(n,v,rows+extra,f,deg,m,algrot,aval,bval);
-		break;
+		puts("-------------------------------------");
 	}
 	free(v);
 	return 0;
