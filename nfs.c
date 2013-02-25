@@ -1175,8 +1175,8 @@ void printalgnum(mpz_t n,uchar *v,int cols,mpz_t *f,int df,mpz_t m,int *aval,int
 int getalgroot(mpz_t n,uchar *v,int cols,mpz_t *in,int df,mpz_t m,mpz_t root,int *aval,int *bval) {
 	double logest=0,b;
 	mpz_t P,M,temp,ans;
-	ull *q,pp,*Mi,*ai,f[MAXDEG+1],fd[MAXDEG+1],g[MAXDEG+1],h[MAXDEG+1];
-	ull *xi,n1,n2;
+	ull *q,pp,*ai,f[MAXDEG+1],fd[MAXDEG+1],g[MAXDEG+1],h[MAXDEG+1];
+	ull n1,n2,xi;
 	const ull MAX=(1ULL<<61)-1; /* start here to check for primes */
 	int i,s,maxu,qn,dfd,j,dg,dh,k,ret=0;
 	double zp;
@@ -1192,6 +1192,7 @@ int getalgroot(mpz_t n,uchar *v,int cols,mpz_t *in,int df,mpz_t m,mpz_t root,int
 	mpz_init_set_si(M,1);
 	mpz_init(temp);
 	mpz_init(ans);
+	mpz_set_ui(ans,0);
 	/* rough estimate:
 	   d^(d+5)/2 * n * (2*u*sqrt(d)*m)^(s/2)
 	   calculate log2 of this since it's huge */
@@ -1215,12 +1216,8 @@ int getalgroot(mpz_t n,uchar *v,int cols,mpz_t *in,int df,mpz_t m,mpz_t root,int
 	qn=(int)(1+logest/log2(MAX));
 	q=malloc(qn*sizeof(ull));
 	if(!q) error("out of memory in algroot");
-	Mi=malloc(qn*sizeof(ull));
-	if(!Mi) error("out of memory in algroot");
 	ai=malloc(qn*sizeof(ull));
 	if(!ai) error("out of memory in algroot");
-	xi=malloc(qn*sizeof(ull));
-	if(!xi) error("out of memory in algroot");
 	/* don't be super duper tight and take primes just below 2^63.
 	   it seems there are overflow issues in some of the subroutines,
 	   the suspects are polyderivemod and polymulmodmod (and their callees) */
@@ -1234,12 +1231,12 @@ int getalgroot(mpz_t n,uchar *v,int cols,mpz_t *in,int df,mpz_t m,mpz_t root,int
 		q[i++]=pp;
 		mpz_mul(M,M,P);
 	}
-	/* for each i, compute rem(M_i,q_i) and a_i */
+	/* for each i, compute a_i */
 	for(zp=i=0;i<qn;i++) {
 		mpz_set_ull(P,q[i]);
 		mpz_fdiv_q(temp,M,P);
-		Mi[i]=mpz_mod_ull(temp,q[i]);
-		ai[i]=inverse(Mi[i],q[i]);
+		pp=mpz_mod_ull(temp,q[i]);
+		ai[i]=inverse(pp,q[i]);
 	}
 	/* for each q_i, calculate f'^2 * prod(a-bx) mod f, mod q_i
 	   and calculate its square root in Z_p/<f> */
@@ -1272,8 +1269,6 @@ int getalgroot(mpz_t n,uchar *v,int cols,mpz_t *in,int df,mpz_t m,mpz_t root,int
 		}
 		/* norm of root (in g,dg) */
 		n1=calcnormmod(g,dg,f,df,q[i]);
-		/* get xi */
-		xi[i]=evalpolymod(f,df,mpz_mod_ull(m,q[i]),q[i]);
 		/* norm of f'(alpha) */
 		n2=calcnormmod(fd,dfd,f,df,q[i]);
 		/* norm of square root of all prime ideals */
@@ -1284,13 +1279,27 @@ int getalgroot(mpz_t n,uchar *v,int cols,mpz_t *in,int df,mpz_t m,mpz_t root,int
 		/* if the norms are different, negate the root */
 //		printf("before neg %I64d %I64d, n^2=%I64d\n",n1,n2,ullmulmod2(n2,n2,q[i]));
 		if(n1!=n2) for(j=0;j<=dg;j++) g[j]=(q[i]-g[j])%q[i];
-		/* TODO calculate a_i*x_i*P_i mod p_i and store it */
+//		printf("sqrt is ");printullpoly(g,dg);printf("\n");
 		n1=calcnormmod(g,dg,f,df,q[i]);
 //		printf("after  neg %I64d %I64d\n",n1,n2);
 		if(n1!=n2) { printf("error %d/%d, norms are not equal!\n",i+1,qn); goto quit; }
+		/* calculate a_i*x_i*P_i mod n and add it to result */
+		mpz_set_ull(P,q[i]);
+		mpz_fdiv_q(temp,M,P);
+		mpz_set_ull(P,ai[i]);
+		mpz_mul(temp,temp,P);
+		xi=evalpolymod(g,dg,mpz_mod_ull(m,q[i]),q[i]);
+		mpz_set_ull(P,xi);
+		mpz_mul(temp,temp,P);
+		mpz_add(ans,ans,temp);
+		mpz_fdiv_r(ans,ans,M);
 	}
 	ret=1;
-	puts("todo success algroot");
+	mpz_set(root,ans);
+	mpz_fdiv_r(root,root,n);
+	mpz_mul(temp,root,root);
+	mpz_fdiv_r(temp,temp,n);
+	gmp_printf("root %Zd root^2 %Zd\n",root,temp);
 quit:	
 	free(q);
 	mpz_clear(ans);
@@ -1323,7 +1332,7 @@ int trialsmooth(mpz_t a,mpz_t b,mpz_t *f,int deg,mpz_t m,int *f0,ull *f1,int *fn
 	mpz_init(rat);
 	mpz_mul(rat,b,m);
 	mpz_sub(rat,a,rat);
-//	gmp_printf("\nrat %Zd: ",rat);
+	// gmp_printf("\nrat %Zd: ",rat);
 	/* check for negative a-bm */
 	if(mpz_cmp_si(rat,0)<0) *f0=1,mpz_abs(rat,rat);
 	else *f0=0;
@@ -1361,7 +1370,7 @@ int trialsmooth(mpz_t a,mpz_t b,mpz_t *f,int deg,mpz_t m,int *f0,ull *f1,int *fn
 	mpz_init(alg);
 	calcnorm(alg,a,b,f,deg);
 	mpz_abs(alg,alg);
-//	gmp_printf("\nalg %Zd: \n",alg),
+	// gmp_printf("\nalg %Zd: \n",alg);
 	*fn1=0;
 	/* trial division on norm(a-b*alpha) */
 	for(i=0;i<bn1;i++)  {
@@ -1589,6 +1598,14 @@ void testsieve(mpz_t n,mpz_t *f,int fn,mpz_t m,int extra,int *aval,int *bval) {
 	puts("end sievetest");
 }
 
+void takegcd(mpz_t ans,mpz_t alg,mpz_t rat,mpz_t n) {
+	mpz_t sub;
+	mpz_init(sub);
+	mpz_sub(sub,alg,rat);
+	mpz_gcd(ans,n,sub);
+	mpz_clear(sub);
+}
+
 /* takes a number n and returns a factor p, if found
    return values:
    1: factor found
@@ -1603,7 +1620,7 @@ int donfs(mpz_t n) {
 	ull Br=opt_Br,Ba=opt_Ba,rows,k;
 	int *aval,*bval;
 	int deg=opt_deg;
-	int err,retval=1,i,Bk=opt_Bq,j;
+	int err,retval=0,i,Bk=opt_Bq,j;
 	int extra=opt_extra,zero;
 	uchar *v;
 	uchar *freevar;
@@ -1698,19 +1715,23 @@ int donfs(mpz_t n) {
 	if(!freevar) error("out of memory");
 	zero=findfreevars(M,rows,rows+extra,freevar);
 	printf("gauss done, %d free variables found\n",zero);
-	for(k=0;k<zero && k<2000;k++) {
+	for(k=0;k<zero;k++) {
 		puts("-------------------------------------");
 		getsquare(M,rows,rows+extra,freevar,k,v);
 //		printalgnum(n,v,rows+extra,f,deg,m,aval,bval);
 		if(!getalgroot(n,v,rows+extra,f,deg,m,algrot,aval,bval)) continue;
 //		printf("takevector:\n");for(i=0;i<rows+extra;i++) printf("%d",v[i]);printf("\n");
 		getratroot(n,v,rows+extra,f,deg,m,ratrot,aval,bval);
-		/* TODO algebraic square root */
-		/* TODO take gcd(n,ratrot,algrot) */
-		/* TODO pick another linear combination if gcd is trivial */
+		gmp_printf("algroot %Zd ratroot %Zd\n",algrot,ratrot);
+		takegcd(temp,algrot,ratrot,n);
+		/* trivial result, try next linear combination */
+		if(!mpz_cmp_si(temp,1) || !mpz_cmp(temp,n)) continue;
+		gmp_printf("found factor %Zd after %d tries\n",temp,k+1);
+		retval=1;
+		break;
 	}
+	if(!retval) puts("no factor found");
 	free(v);
-	return 0;
 end:
 	for(i=0;i<=MAXDEG;i++) mpz_clear(f[i]);
 	mpz_clear(ratrot); mpz_clear(algrot);

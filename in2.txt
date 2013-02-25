@@ -1,12 +1,12 @@
 ; example from matthew briggs & michael case
 45113
-90
+97
 30
-6
+5
 3
 31
-300
-30
+900
+50
 0
-3
+11
 1
