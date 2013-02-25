@@ -116,6 +116,7 @@ void readoptions() {
 	getnextline(s); sscanf(s,"%d",&opt_skip);
 	getnextline(s); sscanf(s,"%d",&opt_extra);
 	if(opt_deg>MAXDEG) error("too high degree");
+	if(!(opt_deg&1)) error("degree must be odd");
 	getnextline(s); sscanf(s,"%d",&opt_signb);
 	if(opt_signb!=1 && opt_signb!=-1) error("wrong sign");
 }
@@ -1173,10 +1174,10 @@ void printalgnum(mpz_t n,uchar *v,int cols,mpz_t *f,int df,mpz_t m,int *aval,int
 /* use couveignes' algorithm */
 int getalgroot(mpz_t n,uchar *v,int cols,mpz_t *in,int df,mpz_t m,mpz_t root,int *aval,int *bval) {
 	double logest=0,b;
-	mpz_t P,M,temp;
+	mpz_t P,M,temp,ans;
 	ull *q,pp,*Mi,*ai,f[MAXDEG+1],fd[MAXDEG+1],g[MAXDEG+1],h[MAXDEG+1];
 	ull *xi,n1,n2;
-	const ull MAX=(1ULL<<62)-1; /* start here to check for primes */
+	const ull MAX=(1ULL<<61)-1; /* start here to check for primes */
 	int i,s,maxu,qn,dfd,j,dg,dh,k,ret=0;
 	double zp;
 	static int *ev;
@@ -1190,6 +1191,7 @@ int getalgroot(mpz_t n,uchar *v,int cols,mpz_t *in,int df,mpz_t m,mpz_t root,int
 	mpz_init(P);
 	mpz_init_set_si(M,1);
 	mpz_init(temp);
+	mpz_init(ans);
 	/* rough estimate:
 	   d^(d+5)/2 * n * (2*u*sqrt(d)*m)^(s/2)
 	   calculate log2 of this since it's huge */
@@ -1285,11 +1287,13 @@ int getalgroot(mpz_t n,uchar *v,int cols,mpz_t *in,int df,mpz_t m,mpz_t root,int
 		/* TODO calculate a_i*x_i*P_i mod p_i and store it */
 		n1=calcnormmod(g,dg,f,df,q[i]);
 //		printf("after  neg %I64d %I64d\n",n1,n2);
-//		if(n1!=n2) { printf("error %d/%d, norms are not equal!\n",i+1,qn); goto quit; }
+		if(n1!=n2) { printf("error %d/%d, norms are not equal!\n",i+1,qn); goto quit; }
 	}
 	ret=1;
+	puts("todo success algroot");
 quit:	
 	free(q);
+	mpz_clear(ans);
 	mpz_clear(temp);
 	mpz_clear(M);
 	mpz_clear(P);
@@ -1517,7 +1521,7 @@ int linesieve(int a1,int a2,int b,mpz_t n,mpz_t *f,int fn,mpz_t m,int extra,int 
 				   column i is the ith relation we find
 				   row corresponds to -1, prime or quadratic character */
 				if(f0) MSETBIT(M,0,smooth);
-				for(j=0;j<fn1;j++) MSETBIT(M,1+f1[j],smooth);
+				for(j=0;j<fn1;j++) MTOGGLEBIT(M,1+f1[j],smooth);
 				for(j=0;j<fn2;j++) MTOGGLEBIT(M,1+bn1+f2[j],smooth);
 				for(j=0;j<fn3;j++) MSETBIT(M,1+bn1+bn2+f3[j],smooth);
 				/* store the rational divisors */
@@ -1696,14 +1700,14 @@ int donfs(mpz_t n) {
 	printf("gauss done, %d free variables found\n",zero);
 	for(k=0;k<zero && k<2000;k++) {
 		puts("-------------------------------------");
-		if(!getalgroot(n,v,rows+extra,f,deg,m,algrot,aval,bval)) continue;
 		getsquare(M,rows,rows+extra,freevar,k,v);
+//		printalgnum(n,v,rows+extra,f,deg,m,aval,bval);
+		if(!getalgroot(n,v,rows+extra,f,deg,m,algrot,aval,bval)) continue;
 //		printf("takevector:\n");for(i=0;i<rows+extra;i++) printf("%d",v[i]);printf("\n");
 		getratroot(n,v,rows+extra,f,deg,m,ratrot,aval,bval);
 		/* TODO algebraic square root */
 		/* TODO take gcd(n,ratrot,algrot) */
 		/* TODO pick another linear combination if gcd is trivial */
-//		printalgnum(n,v,rows+extra,f,deg,m,aval,bval);
 	}
 	free(v);
 	return 0;
