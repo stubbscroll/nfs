@@ -413,6 +413,11 @@ void polyaddmod(ull *a,int da,ull *b,int db,ull *c,int *dc,ull p) {
 	for(i=0;i<=dr;i++) c[i]=r[i];
 }
 
+/* negates a (modifies a) */
+void polynegmod(ull *a,int da,ull p) {
+	for(;da>-1;da--) a[da]=((ll)p-(ll)a[da])%p;
+}
+
 /* given polynomials a(x) and b(x), calculate quotient and
    remainder of a(x)/b(x) (mod p)
    dega, degb are the degrees of a and b, respectively. assume that *c, *d
@@ -460,6 +465,7 @@ void polymulmod(ull *a,int dega,ull *b,int degb,ull *c,int *degc,ull p) {
 		}
 	}
 	for(i=0;i<=*degc;i++) c[i]=r[i];
+	while(*degc>-1 && !c[*degc]) (*degc)--;
 }
 
 /* reduce a(x) mod v(x) over Z_p */
@@ -575,6 +581,61 @@ end:
 	polymonic(g,*dg,p);
 }
 
+/* calculate inverse of a mod m (m can be composite, but 0 will be
+   returned if an inverse doesn't exist). warning, don't use if m>=2^63 */
+ll inversemal(ll a,ll m) {
+	ll b=m,x=0,y=1,t,q,lastx=1,lasty=0;
+	while(b) {
+		q=a/b;
+		t=a,a=b,b=t%b;
+		t=x,x=lastx-q*x,lastx=t;
+		t=y,y=lasty-q*y,lasty=t;
+	}
+	return a==1?(lastx%m+m)%m:0;
+}
+
+/* find the inverse g(x)=a^1(x) of a(x) mod f(x) mod p using
+   the extended euclid algorithm */
+/* f(x) is assumed to be monic. if an inverse doesn't exist, return g=0 */
+void polyinversemodmod(ull *in,int din,ull *f,int df,ull *g,int *dg,ull p) {
+	ull b[MAXDEG+1],x[MAXDEG+1],y[MAXDEG+1],lastx[MAXDEG+1],lasty[MAXDEG+1];
+	ull t[MAXDEG+1],q[MAXDEG+1],a[MAXDEG+1],z[MAXDEG+1],v;
+	int db,dx,dy,lastdx,lastdy,dt,dq,da,dz,i;
+	if(din<0) { *dg=-1; return; }
+	polyset(f,df,b,&db);
+	polyset(in,din,a,&da);
+	dx=-1; y[0]=1; dy=0;
+	lastx[0]=1; lastdx=0; lastdy=-1;
+	while(db>-1) {
+		/* set a=b, b=a%b, q=a/b */
+		polyset(a,da,t,&dt);
+		polyset(b,db,a,&da);
+		polydivmod(t,dt,a,da,q,&dq,b,&db,p);
+		/* set x=lastx-q*x, lastx=x */
+		polyset(x,dx,t,&dt);
+		polymulmod(q,dq,x,dx,z,&dz,p);
+		polyset(lastx,lastdx,x,&dx);
+		polynegmod(z,dz,p);
+		polyaddmod(x,dx,z,dz,x,&dx,p);
+		polyset(t,dt,lastx,&lastdx);
+		/* set y=lasty-q*y, lasty=y */
+		polyset(y,dy,t,&dt);
+		polymulmod(q,dq,y,dy,z,&dz,p);
+		polyset(lasty,lastdy,y,&dy);
+		polynegmod(z,dz,p);
+		polyaddmod(y,dy,z,dz,y,&dy,p);
+		polyset(t,dt,lasty,&lastdy);
+	}
+	/* now a is gcd(a,f). if !=1 return failure */
+	if(da>0) { *dg=-1; return; }
+	/* lastx is inverse, multiply with inverse of a[0] */
+	if(a[0]!=1) {
+		v=inverse(a[0],p);
+		for(i=0;i<=lastdx;i++) lastx[i]=ullmulmod2(lastx[i],v,p);
+	}
+	for(*dg=lastdx,i=0;i<=lastdx;i++) g[i]=lastx[i];
+}
+
 /* return 1 if u(x) is squarefree. u is squarefree iff gcd(u,u')==1.
    u(x) must be monic. unpredictable results if deg u <= p */
 int ispolymodsquarefree(ull *u,int du,ull p) {
@@ -666,6 +727,60 @@ void findideals2(ull *u,int du,ull p,ull *f,int *fn) {
 	polyfindrootmod(u,du,p,f,fn);
 }
 
+/* determinant using stupid and slow O(n!) algorith, but n will never
+   be huge (say, never larger than 6 and in practice it will always be 3).
+   generate permutations using fancy loop-free algorithm by knuth
+   where successively generated permutations have alternating parity
+   [an easy O(n^3) algorithm: gauss-jordan and return product of diagonal
+   times the numbers we divided the rows with] */
+ull calcdet(ull A[MAXDEG+1][MAXDEG+1],int n,ull p) {
+	ull res=0,r;
+  int o[100],c[100],j,s,q,a[100],sign=1;
+  char t;
+  for(j=0;j<n;j++) c[j]=0,o[j]=1,a[j]=j;
+p2:
+	/* visit permutation */
+	r=sign?1:p-1;
+	for(j=0;j<n;j++) r=ullmulmod2(r,A[j][a[j]],p);
+	res+=r;
+	if(res>=p) res-=p;
+	sign^=1;
+	/* end visit */
+  j=n; s=0;
+p4:
+  q=c[j-1]+o[j-1];
+  if(q<0) goto p7;
+  if(q==j) goto p6;
+  t=a[j-c[j-1]+s-1]; a[j-c[j-1]+s-1]=a[j-q+s-1]; a[j-q+s-1]=t;
+  c[j-1]=q;
+  goto p2;
+p6:
+  if(j==1) return res;
+  s++;
+p7:
+  o[j-1]=-o[j-1]; j--;
+  goto p4;
+}
+
+/* calculate norm mod p of general element a(x) in field with minimal
+   polynomial f(x). uses determinant method */
+/* tested against calcnorm() with tens of millions of numbers of the form
+   a+b*alpha with degrees 3-6, with a,b huge modulo a huge prime */
+ull calcnormmod(ull *a,int da,ull *f,int df,ull p) {
+	static ull A[MAXDEG+1][MAXDEG+1];
+	ull b[MAXDEG+1]={0,1},c[MAXDEG+1];
+	int i,j,db=1,dc;
+	polyset(a,da,c,&dc);
+	for(i=0;i<=dc;i++) A[i][0]=a[i];
+	for(;i<df;i++) A[i][0]=0;
+	for(j=1;j<df;j++) {
+		polymulmodmod(c,dc,b,db,f,df,c,&dc,p);
+		for(i=0;i<=dc;i++) A[i][j]=c[i];
+		for(;i<df;i++) A[i][j]=0;
+	}
+	return calcdet(A,df,p);
+}
+
 /* B1 and B2 are upper bound for primes (algebraic and rational)
    f is polynomial, deg is degree
    p1,r1 is algebraic factor base, bn1 is number of primes
@@ -684,29 +799,6 @@ void createfactorbases(ull B1,ull B2,ull Bk,mpz_t *f,int deg,ull **_p1,ull **_r1
 	for(*bn2=0,i=2;i<=B2;i++) if(sieve[i]) (*bn2)++;
 	if(!(p2=malloc(*bn2*sizeof(ull)))) error("couldn't allocate rational factor base");
 	for(*bn2=0,i=2;i<=B2;i++) if(sieve[i]) p2[(*bn2)++]=i;
-
-	/* sanity test: check if fast and slow polylin return the same values */
-/*	int teller=0;
-	for(i=2;i<=B1;i++) if(sieve[i]) {
-		int fn2;
-		static ull f2[1000];
-		db=deg;
-		for(k=0;k<=db;k++) b[k]=mpz_mod_ull(f[k],i);
-		findideals2(b,db,i,root,&fn);
-		polylinmodnaive(b,db,i,f2,&fn2);
-		if(teller++%500==0) printf("test %I64d: fast %d, naive %d\n",i,fn,fn2);
-		for(j=0;j<fn;j++) {
-			for(k=0;k<fn2;k++) if(root[j]==f2[k]) goto ok;
-			printf("error, polylinmod found [%I64d %I64d] not found by naive (sq-free %d)\n",i,root[j],ispolymodsquarefree(b,db,i));
-		ok:;
-		}
-		for(j=0;j<fn2;j++) {
-			for(k=0;k<fn;k++) if(root[k]==f2[j]) goto ok2;
-			printf("error, naive found [%I64d %I64d] not found by polylinmod (sq-free %d)\n",i,f2[j],ispolymodsquarefree(b,db,i));
-		ok2:;
-		}
-	}
-	puts("sanity test done");*/
 
 	/* generate algebraic factor base */
 	for(*bn1=0,i=2;i<=B1;i++) if(sieve[i]) {
@@ -848,6 +940,9 @@ void getsquare(uint **a,int rows,int cols,uchar *freevar,int id,uchar *v) {
 /* store rational factors for pairs (a,b) */
 ull **faclist;
 int *facn;
+/* store algebraic factors for pairs (a,b) */
+ull **alglist;
+int *algn;
 
 /* get rational square root! */
 void getratroot(mpz_t n,uchar *v,int cols,mpz_t *f,int df,mpz_t m,mpz_t root,int *aval,int *bval) {
@@ -874,12 +969,13 @@ void getratroot(mpz_t n,uchar *v,int cols,mpz_t *f,int df,mpz_t m,mpz_t root,int
 		mpz_init_set(fd[i],f[i+1]);
 		mpz_mul_ui(fd[i],fd[i],i+1);
 	}
-	printmpzpoly(fd,dfd);
 	evalpoly(fd,dfd,m,t);
 	mpz_mod(t,t,n); /* t = f'(m) mod n */
 	mpz_mul(root,root,t); /* multiply in f'(m) */
 	mpz_mod(root,root,n); /* and reduce mod n */
-	gmp_printf("rational root: %Zd\n",root);
+	mpz_mul(t,root,root);
+	mpz_mod(t,t,n);
+	gmp_printf("rational root: %Zd, square %Zd\n",root,t);
 	for(i=0;i<=dfd;i++) mpz_clear(fd[i]);
 	free(ev);
 	mpz_clear(t);
@@ -933,9 +1029,76 @@ notzero:
 	return 0;
 }
 
-/* given a, find b such that b^2=a, in the field Z_p/<f(x)> */
+int findexpdiv2(mpz_t P,int df) {
+	mpz_t s;
+	int r=0;
+	mpz_init(s);
+	mpz_pow_ui(s,P,df);
+	mpz_sub_ui(s,s,1);
+	while(!mpz_tstbit(s,0)) {
+		r++;
+		mpz_fdiv_q_2exp(s,s,1);
+	}
+	mpz_clear(s);
+	return r;
+}
+
+/* given a, find b such that b^2=a in the field F_{p^df} given by the
+   minimal polynomial f with degree df */
+/* based on description in briggs */
+/* algorithm is pretty much tonelli-shanks, adapted to F_{p^df} */
+/* warning, i took a dubious short cut when implementing. p^df-1 should
+   not have a divisor 2^s for a large s. this was circumvented by avoiding
+   finite fields with this property */
 void polysqrtmod(ull *a,int da,ull *f,int df,ull *b,int *db,ull p) {
-	/* TODO */
+	mpz_t s,z;
+	ull j,c[MAXDEG+1],d[MAXDEG+1],e[MAXDEG+1];
+	int r=0,dc,i,dd,t,de;
+	/* does the square root exist? */
+	if(1!=polylegendre(a,da,f,df,p)) { *db=-1; printf("not a square\n"); return; }
+	mpz_init(s);
+	mpz_init(z);
+	/* write p^df-1 as 2^r * s for s odd */
+	mpz_set_ull(s,p);
+	mpz_pow_ui(s,s,df);
+	mpz_sub_ui(s,s,1);
+	while(!mpz_tstbit(s,0)) {
+		r++;
+		mpz_fdiv_q_2exp(s,s,1);
+	}
+	if(r>10) error("error, unsuitable r");
+	/* find an element in F_{p^df} which is a non-residue */
+	for(j=1;;j++) {
+		for(dc=df-1,i=0;i<=dc;i++) c[i]=j;
+//		for(dc=1,i=0;i<=dc;i++) c[i]=j;
+		if(-1==polylegendre(c,dc,f,df,p)) break;
+	}
+	/* d=a^s */
+	polypowmodmodmpz(a,da,s,f,df,d,&dd,p);
+	/* find t such that c^2st = d. guaranteed to be <2^r */
+	for(t=0;t<(1<<r);t++) {
+		mpz_mul_ui(z,s,2*t);
+		polypowmodmodmpz(c,dc,z,f,df,e,&de,p);
+		/* c^2st == d? */
+		if(de==dd) {
+			for(i=0;i<=de;i++) if(e[i]!=d[i]) goto noteq;
+			goto eq;
+		}
+	noteq:;
+	}
+	error("didn't find t in sqrt");
+eq:;
+	mpz_mul_ui(z,s,t);
+	polypowmodmodmpz(c,dc,z,f,df,e,&de,p);
+	/* calculate the inverse of e */
+	polyinversemodmod(e,de,f,df,e,&de,p);
+	/* the root is a^(s+1)/2 * e^-1 */
+	mpz_add_ui(s,s,1);
+	mpz_fdiv_q_2exp(s,s,1);
+	polypowmodmodmpz(a,da,s,f,df,c,&dc,p);
+	polymulmodmod(c,dc,e,de,f,df,b,db,p);
+	mpz_clear(z);
+	mpz_clear(s);
 }
 
 /* here follows some subroutines for polynomial arithmetic over Z */
@@ -993,9 +1156,7 @@ void printalgnum(mpz_t n,uchar *v,int cols,mpz_t *f,int df,mpz_t m,int *aval,int
 	polyreducempz(a,da,f,df,a,&da);
 	polymulmpz(a,da,b,db,a,&da);
 	polyreducempz(a,da,f,df,a,&da);
-//	printf("f'(x)^2: ");printmpzpoly(a,da);
 	for(i=0;i<cols;i++) if(v[i]) {
-//		printf("(%d, %d)\n",aval[i],bval[i]);
 		mpz_set_si(b[0],aval[i]);
 		mpz_set_si(b[1],-bval[i]);
 		db=1;
@@ -1010,17 +1171,30 @@ void printalgnum(mpz_t n,uchar *v,int cols,mpz_t *f,int df,mpz_t m,int *aval,int
 
 /* get algebraic square root! v is the subset of (a,b) pairs */
 /* use couveignes' algorithm */
-void getalgroot(mpz_t n,uchar *v,int cols,mpz_t *in,int df,mpz_t m,mpz_t root,int *aval,int *bval) {
+int getalgroot(mpz_t n,uchar *v,int cols,mpz_t *in,int df,mpz_t m,mpz_t root,int *aval,int *bval) {
 	double logest=0,b;
 	mpz_t P,M,temp;
 	ull *q,pp,*Mi,*ai,f[MAXDEG+1],fd[MAXDEG+1],g[MAXDEG+1],h[MAXDEG+1];
-	int i,s,maxu,qn,dfd,j,dg,dh;
+	ull *xi,n1,n2;
+	const ull MAX=(1ULL<<62)-1; /* start here to check for primes */
+	int i,s,maxu,qn,dfd,j,dg,dh,k,ret=0;
+	double zp;
+	static int *ev;
+	/* populate exponent vector */
+	ev=calloc(bn1,sizeof(int));
+	if(!ev) error("out of memory");
+	for(i=0;i<cols;i++) if(v[i]) for(j=0;j<algn[i];j++) {
+		if(alglist[i][j]<0 || alglist[i][j]>=bn1) error("error");
+		ev[alglist[i][j]]++;
+	}
 	mpz_init(P);
 	mpz_init_set_si(M,1);
 	mpz_init(temp);
 	/* rough estimate:
 	   d^(d+5)/2 * n * (2*u*sqrt(d)*m)^(s/2)
 	   calculate log2 of this since it's huge */
+	/* if this turns out to be bad, check the paper of couveignes for a
+	   tighter bound using complex roots and direct evaluation of stuff */
 	logest=log2(df)*(df+5)*.5;
 	logest+=mpz_sizeinbase(n,2);
 	/* get u and s */
@@ -1034,26 +1208,32 @@ void getalgroot(mpz_t n,uchar *v,int cols,mpz_t *in,int df,mpz_t m,mpz_t root,in
 	for(s=i=0;i<cols;i++) s+=v[i];
 	b=2*maxu*sqrt(df)*mpz_get_d(m);
 	logest+=s*.5*log2(b);
-//	printf("estimate: %f bits\n",logest);
+	printf("estimate: %f bits\n",logest);
 	/* find multiple q such that their product has >= logest digits */
-	qn=(int)(1+logest/log2(9e18));
+	qn=(int)(1+logest/log2(MAX));
 	q=malloc(qn*sizeof(ull));
 	if(!q) error("out of memory in algroot");
 	Mi=malloc(qn*sizeof(ull));
 	if(!Mi) error("out of memory in algroot");
 	ai=malloc(qn*sizeof(ull));
 	if(!ai) error("out of memory in algroot");
-	for(pp=(1ULL<<63)-1,i=0;i<qn;pp-=2) {
+	xi=malloc(qn*sizeof(ull));
+	if(!xi) error("out of memory in algroot");
+	/* don't be super duper tight and take primes just below 2^63.
+	   it seems there are overflow issues in some of the subroutines,
+	   the suspects are polyderivemod and polymulmodmod (and their callees) */
+	for(pp=MAX,i=0;i<qn;pp+=2) {
 		mpz_set_ull(P,pp);
+		/* P must be prime and f(x) mod P must be irreducible */
 		if(!mpz_probab_prime_p(P,30)) continue;
 		if(!polyirredmod(in,df,pp)) continue;
-		/* TODO disallow some pp if it makes square root computation
-		   harder */
+		/* we also want to avoid P such that 2^r for large r divides P^df-1 */
+		if(findexpdiv2(P,df)>5) continue;
 		q[i++]=pp;
 		mpz_mul(M,M,P);
 	}
 	/* for each i, compute rem(M_i,q_i) and a_i */
-	for(i=0;i<qn;i++) {
+	for(zp=i=0;i<qn;i++) {
 		mpz_set_ull(P,q[i]);
 		mpz_fdiv_q(temp,M,P);
 		Mi[i]=mpz_mod_ull(temp,q[i]);
@@ -1063,26 +1243,58 @@ void getalgroot(mpz_t n,uchar *v,int cols,mpz_t *in,int df,mpz_t m,mpz_t root,in
 	   and calculate its square root in Z_p/<f> */
 	dfd=df-1;
 	for(i=0;i<qn;i++) {
+//		printf("prime %I64d\n",q[i]);
 		for(j=0;j<=df;j++) f[j]=mpz_mod_ull(in[j],q[i]);
 		polyderivemod(f,df,fd,&dfd,q[i]);
 		/* form f'^2 * prod_{(a,b)} (a-b*alpha) mod q[i] */
 		polymulmodmod(fd,dfd,fd,dfd,f,df,g,&dg,q[i]);
 		for(j=0;j<cols;j++) if(v[j]) {
-			h[0]=aval[j];
-			h[1]=((-bval[j])%q[i]+q[i])%q[i];
+			h[0]=(aval[j]%(ll)q[i]+(ll)q[i])%(ll)q[i];
+			h[1]=((-(ll)bval[j])%(ll)q[i]+(ll)q[i])%(ll)q[i];
 			dh=1;
 			polymulmodmod(g,dg,h,dh,f,df,g,&dg,q[i]);
 		}
-		/* square root */
-//		printf("q mod 8: %I64d, legendre %d\n",q[i]&7,polylegendre(g,dg,f,df,q[i]));
+//		printf("%d: take sqrt of ",i);printullpoly(g,dg);printf("mod %I64d\n",q[i]);
+//		printf("norm before root: %I64d\n",calcnormmod(g,dg,f,df,q[i]));
+		/* take square root of g */
+		polysqrtmod(g,dg,f,df,g,&dg,q[i]);
+		/* sanity, not a square */
+		if(dg<0) {
+			printf("failed in %d of %d\n",i+1,qn);
+			puts("error!");
+			printf("p %I64d, f(x) mod p = ",q[i]);
+			printullpoly(f,df);printf("\n");
+			printf("g(x) mod p is not square: ");
+			printullpoly(g,dg);printf("\n");
+			goto quit;
+		}
+		/* norm of root (in g,dg) */
+		n1=calcnormmod(g,dg,f,df,q[i]);
+		/* get xi */
+		xi[i]=evalpolymod(f,df,mpz_mod_ull(m,q[i]),q[i]);
+		/* norm of f'(alpha) */
+		n2=calcnormmod(fd,dfd,f,df,q[i]);
+		/* norm of square root of all prime ideals */
+		for(j=0;j<bn1;j++) if(ev[j]) {
+			/* norm of prime factor represented by the pair (p,r) is p */
+			for(k=0;k+k<ev[j];k++) n2=ullmulmod2(n2,p1[j],q[i]);
+		}
+		/* if the norms are different, negate the root */
+//		printf("before neg %I64d %I64d, n^2=%I64d\n",n1,n2,ullmulmod2(n2,n2,q[i]));
+		if(n1!=n2) for(j=0;j<=dg;j++) g[j]=(q[i]-g[j])%q[i];
+		/* TODO calculate a_i*x_i*P_i mod p_i and store it */
+		n1=calcnormmod(g,dg,f,df,q[i]);
+//		printf("after  neg %I64d %I64d\n",n1,n2);
+//		if(n1!=n2) { printf("error %d/%d, norms are not equal!\n",i+1,qn); goto quit; }
 	}
-	
-	
-	
+	ret=1;
+quit:	
 	free(q);
 	mpz_clear(temp);
 	mpz_clear(M);
 	mpz_clear(P);
+	free(ev);
+	return ret;
 }
 
 /* use trial division to check that a-bm (rational) and a-b*alpha (algebraic)
@@ -1093,7 +1305,7 @@ void getalgroot(mpz_t n,uchar *v,int cols,mpz_t *in,int df,mpz_t m,mpz_t root,in
 int trialsmooth(mpz_t a,mpz_t b,mpz_t *f,int deg,mpz_t m,int *f0,ull *f1,int *fn1,ull *f2,int *fn2,ull *f3,int *fn3) {
 	mpz_t rat,alg,t,u,div;
 	ull i,j,r,A,B;
-	int count,ret=0;
+	int ret=0;
 	mpz_init(t);
 	mpz_init(u);
 	mpz_set(t,a);
@@ -1165,13 +1377,14 @@ int trialsmooth(mpz_t a,mpz_t b,mpz_t *f,int deg,mpz_t m,int *f0,ull *f1,int *fn
 		mpz_fdiv_q(alg,alg,div);
 //		gmp_printf("[%I64d %I64d] ",p1[i],r1[i]);
 		/* factor out div from alg and keep count */
-		for(count=1;;count++) {
+		f1[(*fn1)++]=i;
+		while(1) {
 			mpz_fdiv_qr(t,u,alg,div);
 			if(mpz_cmp_si(u,0)) break;
 			mpz_set(alg,t);
 //			gmp_printf("[%I64d %I64d] ",p1[i],r1[i]);
+			f1[(*fn1)++]=i;
 		}
-		if(count&1) f1[(*fn1)++]=i;
 	}
 	/* check if alg>largest prime in factor base */
 	mpz_set_ull(div,p1[bn1-1]);
@@ -1310,8 +1523,12 @@ int linesieve(int a1,int a2,int b,mpz_t n,mpz_t *f,int fn,mpz_t m,int extra,int 
 				/* store the rational divisors */
 				faclist[smooth]=malloc(fn2*sizeof(ull));
 				if(!faclist[smooth]) error("out of memory trialsmooth");
+				alglist[smooth]=malloc(fn1*sizeof(ull));
+				if(!alglist[smooth]) error("out of memory trialsmooth");
 				memcpy(faclist[smooth],f2,sizeof(ull)*fn2);
 				facn[smooth]=fn2;
+				memcpy(alglist[smooth],f1,sizeof(ull)*fn1);
+				algn[smooth]=fn1;
 				/* store the actual a,b pair */
 				aval[smooth]=a1+i;
 				bval[smooth]=b;
@@ -1348,39 +1565,6 @@ end:
 	return ret;
 }
 
-void testtrial(mpz_t n,mpz_t *f,int fn,mpz_t m) {
-	mpz_t a,b;
-	int A,B;
-	/* factor lists */
-	static ull f1[1000],f2[1000],f3[1000];
-	int fn1=0,fn2=0,fn3=0,f0,i;
-	mpz_init(a);
-	mpz_init(b);
-/*	mpz_set_si(a,-1);
-	mpz_set_si(b,33);
-	trialsmooth(a,b,f,fn,m,&f0,f1,&fn1,f2,&fn2,f3,&fn3);
-	return;*/
-
-	puts("start trialtest");
-	for(B=1;B<100;B++) {
-		mpz_set_si(b,B);
-		for(A=-116;A<74;A++) if(gcd(A>0?A:-A,B)==1) {
-			mpz_set_si(a,A);
-			if(!trialsmooth(a,b,f,fn,m,&f0,f1,&fn1,f2,&fn2,f3,&fn3)) continue;
-			printf("==> %d - %d*alpha is smooth!\n",A,B);
-			if(A==-119 && B==11) {
-				printf("exp: %d, ",f0);
-				for(i=0;i<fn1;i++) printf("%I64d ",f1[i]); printf(", ");
-				for(i=0;i<fn2;i++) printf("%I64d ",f2[i]); printf(", ");
-				for(i=0;i<fn3;i++) printf("%I64d ",f3[i]); printf("\n");
-			}
-		}
-	}
-	puts("end trialtest");
-	mpz_clear(b);
-	mpz_clear(a);
-}
-
 void testsieve(mpz_t n,mpz_t *f,int fn,mpz_t m,int extra,int *aval,int *bval) {
 	int B;
 	/* factor lists */
@@ -1390,6 +1574,10 @@ void testsieve(mpz_t n,mpz_t *f,int fn,mpz_t m,int extra,int *aval,int *bval) {
 	if(!faclist) error("out of memory");
 	facn=malloc((1+bn1+bn2+bn3+extra)*sizeof(int));
 	if(!facn) error("out of memory");
+	alglist=malloc((1+bn1+bn2+bn3+extra)*sizeof(ull*));
+	if(!alglist) error("out of memory");
+	algn=malloc((1+bn1+bn2+bn3+extra)*sizeof(int));
+	if(!algn) error("out of memory");
 	for(B=1;;B++) if(linesieve(-opt_sievew,opt_sievew,-1*opt_signb*B,n,f,fn,m,extra,aval,bval)) break;
 	printf("smooth numbers found: %d\n",smooth);
 	printf("nonsmooth numbers trial-divided: %d\n",notsmooth);
@@ -1437,6 +1625,7 @@ int donfs(mpz_t n) {
 	   fully factorize f[0] (possibly by pollard rho or even qs) and
 	   generate all divisors by generating all exponent tuples. in this way,
 	   the program will have full degree 3 support */
+	/* TODO move this to a function */
 	if(mpz_cmp_si(f[0],2000000000)<0) {
 		if(!mpz_cmp_si(f[0],0)) {
 			printmpzpoly(f,deg);
@@ -1493,6 +1682,7 @@ int donfs(mpz_t n) {
 	if(!aval) error("out of memory");
 	bval=malloc(sizeof(int)*(rows+extra));
 	if(!bval) error("out of memory");
+
 	testsieve(n,f,deg,m,extra,aval,bval);
 	puts("start gauss");
 //	printf("before solve\n");for(i=0;i<rows;i++) { for(j=0;j<rows+extra;j++) printf("%d",ISSET(M,i,j)?1:0); printf("\n");}
@@ -1504,7 +1694,9 @@ int donfs(mpz_t n) {
 	if(!freevar) error("out of memory");
 	zero=findfreevars(M,rows,rows+extra,freevar);
 	printf("gauss done, %d free variables found\n",zero);
-	for(k=0;k<zero && k<20;k++) {
+	for(k=0;k<zero && k<2000;k++) {
+		puts("-------------------------------------");
+		if(!getalgroot(n,v,rows+extra,f,deg,m,algrot,aval,bval)) continue;
 		getsquare(M,rows,rows+extra,freevar,k,v);
 //		printf("takevector:\n");for(i=0;i<rows+extra;i++) printf("%d",v[i]);printf("\n");
 		getratroot(n,v,rows+extra,f,deg,m,ratrot,aval,bval);
@@ -1512,8 +1704,6 @@ int donfs(mpz_t n) {
 		/* TODO take gcd(n,ratrot,algrot) */
 		/* TODO pick another linear combination if gcd is trivial */
 //		printalgnum(n,v,rows+extra,f,deg,m,aval,bval);
-		getalgroot(n,v,rows+extra,f,deg,m,algrot,aval,bval);
-		puts("-------------------------------------");
 	}
 	free(v);
 	return 0;
