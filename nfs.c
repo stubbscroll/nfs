@@ -916,10 +916,10 @@ int findfreevars(uint **a,int rows,int cols,uchar *freevar) {
 	return r;
 }
 
-/* find exponents of square. id is a bitmask that contains the values of the
-   free variables from the linear algebra
-	 rows: factor base
-	 cols: relations */
+/* find exponents of square. id is the index of the free variable we want to
+   use
+   rows: factor base
+   cols: relations */
 void getsquare(uint **a,int rows,int cols,uchar *freevar,int id,uchar *v) {
 	int i,j,k;
 	memset(v,0,cols);
