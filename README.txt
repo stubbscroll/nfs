@@ -13,30 +13,30 @@ sub-algorithms:
   finding algorithm for polynomials over Z_p
 - Line sieve using approximations of base 2 logarithms
 - Solve matrix step using Gauss-Jordan
-- Algebraic square root is under progress (attempting to use the method of
-  Couveignes)
+- Algebraic square root using the algorithm by Couveignes which requires that
+  f(x) has odd degree
 
 Read more about the number field sieve elsewhere (for example
 http://en.wikipedia.org/wiki/General_number_field_sieve ). Be warned, the
 algorithm is extremely complicated and math-heavy.
 
-It is made to be dependent of as few external libraries as possible.
+It is made to be dependent on as few external libraries as possible.
 Currently, the only requirement is the GMP (GNU Multiprecision) library.
 The programming language is C, and the only C99 feature used is long long.
 It means that gcc will happily compile the code as C89.
 
-Things needed for a working program:
-- Polynomial factorization of f(x) that works in all cases (currently only
-  works if constant term is less than 2*10^9 and finds linear factors only)
-- Algebraic square root
-- Last gcd step, including picking another linear combination if gcd results
-  in a trivial factor
+The program is fully working, but with the following limitations:
+- f(x) must have degree 3. The polynomial factorization algorithm only
+  searches for linear factors, and a general routine is needed before
+  degrees of 4 or larger can work.
+- f(x) must have odd degree. This requirement is because of the algebraic
+  square root algorithm.
 
-Limitations:
-- Currently limited to degree 3 polynomials, because the factorization of
-  f(x) only looks for linear factors.
-- Gauss-Jordan is a memory bottleneck, limiting the size of the integers to
-  factor to around 60 digits on a machine with 16 GB RAM
+Bottlenecks:
+- Linear algebra step (Gauss-Jordan for huge matrices is slow).
+- Algebraic square root. Some shortcuts were taken when implementing the
+  algorithm, which made the algorithm slower.
+- Hence, the program will not work well for n larger than 50-60 digits.
 
 Areas of improvement:
 - Profile the program and optimize the hot spots
@@ -44,7 +44,7 @@ Areas of improvement:
   all divisors. In this way make a faster check for linear factors that should
   work for larger numbers (this improvement is made superfluous by proper
   polynomial factorization)
-- Use large primes in the sieve to obtain higher yield
+- Use large primes in the sieve to obtain higher yield (large prime variation)
 - Use proper polynomial factorization of f(x), either with the extremely
   complicated Algorithm 3.5.7 in [Coh93], the even more complicated
   algorithm of [Len82] (which is said to be much slower than Algorithm 3.5.7)
@@ -52,7 +52,7 @@ Areas of improvement:
   described in section 3.5.5 in [Coh93].
 - Use a faster linear algebra algorithm than Gauss-Jordan (for instance
   Block Lanczos or Block Wiedemann)
-- Use lattice sieve instead of line sieve
+- Use lattice sieve instead of line sieve (expected speedup: 2-3x)
 - Use a different algebraic square root algorithm that handles even degrees
 - Better selection of f(x)
 - Postprocessing of relations before linear algebra step
